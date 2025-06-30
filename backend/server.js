@@ -2,6 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const db = require('./config/db');
+const authRoutes = require('./routes/auth');
+
+
 
 dotenv.config();
 
@@ -16,6 +19,13 @@ app.use(cors());
 
 
 //routes
+app.use('/api/auth', authRoutes);
+
+
+
+
+
+
 app.get('/api/users', (req, res) => {
   db.query('SELECT * FROM users', (err, results) => {
     if (err) {

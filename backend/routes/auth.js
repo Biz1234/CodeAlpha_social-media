@@ -6,13 +6,14 @@ const router = express.Router();
 
 // Register a new user
 router.post('/register', async (req, res) => {
-  const { username, email, password, bio } = req.body;
-// Validate input
+  const { username, email, password } = req.body;
+
+  // Validate input
   if (!username || !email || !password) {
-    return res.status(400).json({ error: 'All fields are required' });
+    return res.status(400).json({ error: 'Username, email, and password are required' });
   }
 
-try {
+  try {
     // Check if user already exists
     db.query('SELECT * FROM users WHERE email = ? OR username = ?', [email, username], async (err, results) => {
       if (err) {
@@ -27,8 +28,8 @@ try {
 
       // Insert new user
       db.query(
-        'INSERT INTO users (username, email, password, bio) VALUES (?, ?, ?, ?)',
-        [username, email, hashedPassword, bio || ''],
+        'INSERT INTO users (username, email, password) VALUES (?, ?, ?)',
+        [username, email, hashedPassword],
         (err, result) => {
           if (err) {
             return res.status(500).json({ error: 'Failed to register user' });
@@ -41,7 +42,6 @@ try {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
 
 // Login a user
 router.post('/login', (req, res) => {
@@ -63,7 +63,7 @@ router.post('/login', (req, res) => {
 
     const user = results[0];
 
-// Compare password
+    // Compare password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid email or password' });
@@ -79,28 +79,3 @@ router.post('/login', (req, res) => {
 });
 
 module.exports = router;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

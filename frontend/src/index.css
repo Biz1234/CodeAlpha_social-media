@@ -1,14 +1,10 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+
+@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 body {
   font-family: Arial, sans-serif;
-  background-color: #f0f2f5;
-}
-
-h1, h2 {
-  margin-bottom: 20px;
-}
+  background-color: #f0f2fస
+  }

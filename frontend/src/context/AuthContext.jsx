@@ -1,4 +1,3 @@
-
 import { createContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
@@ -8,11 +7,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check for token on mount
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
-      // Fetch user data using token (we'll implement this later)
       axios
         .get('http://localhost:5000/api/users/me', {
           headers: { Authorization: `Bearer ${token}` },
@@ -43,13 +40,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (username, email, password, bio) => {
+  const register = async (username, email, password) => {
     try {
       await axios.post('http://localhost:5000/api/auth/register', {
         username,
         email,
         password,
-        bio,
       });
     } catch (error) {
       throw error.response.data.error;
@@ -68,5 +64,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-
-
+export default AuthProvider;

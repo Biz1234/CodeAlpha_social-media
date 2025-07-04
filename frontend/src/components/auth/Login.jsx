@@ -1,4 +1,3 @@
-
 import { useState, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -16,41 +15,42 @@ function Login() {
       await login(email, password);
       navigate('/');
     } catch (err) {
-      setError(err);
+      setError(err.response?.data?.error || 'Login failed');
     }
   };
 
   return (
-    <div style={styles.container}>
-      <h2>Login</h2>
-      {error && <p style={styles.error}>{error}</p>}
-      <form onSubmit={handleSubmit} style={styles.form}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          style={styles.input}
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          style={styles.input}
-        />
-        <button type="submit" style={styles.button}>Login</button>
+    <div className="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
+      <h2 className="text-2xl font-bold mb-4">Login</h2>
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Email</label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full p-2 border rounded-md"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Password</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full p-2 border rounded-md"
+          />
+        </div>
+        <button
+          type="submit"
+          className="w-full bg-blue-500 text-white p-2 rounded-md hover:bg-blue-600"
+        >
+          Login
+        </button>
       </form>
     </div>
   );
 }
-
-const styles = {
-  container: { maxWidth: '400px', margin: '50px auto', textAlign: 'center' },
-  form: { display: 'flex', flexDirection: 'column', gap: '10px' },
-  input: { padding: '10px', fontSize: '16px' },
-  button: { padding: '10px', background: '#007bff', color: 'white', border: 'none', cursor: 'pointer' },
-  error: { color: 'red' },
-};
 
 export default Login;

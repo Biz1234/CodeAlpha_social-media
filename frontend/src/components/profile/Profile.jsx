@@ -54,7 +54,7 @@ function Profile() {
     }
   };
 
-  if (loading) return <div className="text-center mt-10">Loading...</div>;
+  if (loading) return <div className="text-center mt-10 text-gray-600">Loading...</div>;
   if (error) return <div className="text-center text-red-500 mt-10">{error}</div>;
 
   return (
@@ -64,11 +64,11 @@ function Profile() {
         <img
           src={profile.cover_photo || 'https://via.placeholder.com/1200x200'}
           alt="Cover"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover rounded-t-lg"
         />
       </div>
       {/* Profile Info */}
-      <div className="relative bg-white rounded-lg shadow-md -mt-16 mx-4 p-6">
+      <div className="relative bg-white rounded-b-lg shadow-md -mt-16 mx-4 p-6">
         <div className="flex items-center space-x-4">
           <img
             src={profile.profile_picture || 'https://via.placeholder.com/150'}
@@ -76,9 +76,9 @@ function Profile() {
             className="w-24 h-24 rounded-full object-cover border-4 border-white"
           />
           <div>
-            <h2 className="text-2xl font-bold">@{profile.username}</h2>
-            {profile.full_name && <p className="text-lg">{profile.full_name}</p>}
-            <p className="text-gray-600">{profile.bio || 'No bio available'}</p>
+            <h2 className="text-2xl font-bold text-gray-800">@{profile.username}</h2>
+            {profile.full_name && <p className="text-lg text-gray-600">{profile.full_name}</p>}
+            <p className="text-gray-500">{profile.bio || 'No bio available'}</p>
           </div>
         </div>
         {/* Follow Button and Counts */}
@@ -86,9 +86,11 @@ function Profile() {
           {user && user.username !== profile.username && (
             <button
               onClick={handleFollow}
-              className={`px-4 py-2 rounded-md ${
-                isFollowing ? 'bg-gray-300' : 'bg-blue-500 text-white hover:bg-blue-600'
-              }`}
+              className={`px-4 py-2 rounded-full font-semibold ${
+                isFollowing
+                  ? 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                  : 'bg-blue-500 text-white hover:bg-blue-600'
+              } transition duration-200`}
             >
               {isFollowing ? 'Unfollow' : 'Follow'}
             </button>
@@ -96,7 +98,7 @@ function Profile() {
           {user && user.username === profile.username && (
             <button
               onClick={() => navigate('/edit-profile')}
-              className="px-4 py-2 bg-gray-200 rounded-md hover:bg-gray-300"
+              className="px-4 py-2 bg-gray-200 text-gray-600 rounded-full font-semibold hover:bg-gray-300 transition duration-200"
             >
               Edit Profile
             </button>
@@ -108,7 +110,7 @@ function Profile() {
           </div>
         </div>
         {/* Additional Info */}
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-gray-600">
           {profile.location && (
             <p>
               <strong>Location:</strong> {profile.location}
@@ -117,7 +119,7 @@ function Profile() {
           {profile.website && (
             <p>
               <strong>Website:</strong>{' '}
-              <a href={profile.website} className="text-blue-500" target="_blank" rel="noopener noreferrer">
+              <a href={profile.website} className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer">
                 {profile.website}
               </a>
             </p>
@@ -140,21 +142,29 @@ function Profile() {
         </div>
         {/* Tabs */}
         <div className="mt-6">
-          <div className="border-b">
+          <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-4">
               <button
                 onClick={() => setActiveTab('posts')}
-                className={`px-4 py-2 border-b-2 ${
-                  activeTab === 'posts' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500'
-                }`}
+                className={`px-4 py-2 border-b-2 font-semibold ${
+                  activeTab === 'posts' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500 hover:text-blue-500'
+                } transition duration-200`}
               >
                 Posts
               </button>
               <button
+                onClick={() => setActiveTab('media')}
+                className={`px-4 py-2 border-b-2 font-semibold ${
+                  activeTab === 'media' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500 hover:text-blue-500'
+                } transition duration-200`}
+              >
+                Media
+              </button>
+              <button
                 onClick={() => setActiveTab('likes')}
-                className={`px-4 py-2 border-b-2 ${
-                  activeTab === 'likes' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500'
-                }`}
+                className={`px-4 py-2 border-b-2 font-semibold ${
+                  activeTab === 'likes' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500 hover:text-blue-500'
+                } transition duration-200`}
               >
                 Likes
               </button>
@@ -162,6 +172,7 @@ function Profile() {
           </div>
           <div className="mt-4">
             {activeTab === 'posts' && <Feed username={profile.username} />}
+            {activeTab === 'media' && <Feed username={profile.username} isMedia />}
             {activeTab === 'likes' && <Feed username={profile.username} isLikedPosts />}
           </div>
         </div>

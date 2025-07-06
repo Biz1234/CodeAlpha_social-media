@@ -13,6 +13,7 @@ function Post({ post }) {
   const [showComments, setShowComments] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
+  const [animateLike, setAnimateLike] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -44,6 +45,8 @@ function Post({ post }) {
       );
       setIsLiked(!isLiked);
       setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
+      setAnimateLike(true);
+      setTimeout(() => setAnimateLike(false), 300); // Reset animation
     } catch (err) {
       console.error(err);
     }
@@ -51,11 +54,18 @@ function Post({ post }) {
 
   return (
     <div className="p-4 bg-white rounded-lg shadow-md mb-4">
-      <Link to={`/profile/${post.username}`} className="font-bold">
+      <Link to={`/profile/${post.username}`} className="font-bold text-blue-600 hover:underline">
         @{post.username}
       </Link>
-      <p className="mt-2">{post.content}</p>
-      <p className="text-sm text-gray-500">
+      <p className="mt-2 text-gray-800">{post.content}</p>
+      {post.image_url && (
+        <img
+          src={post.image_url}
+          alt="Post media"
+          className="mt-2 w-full h-64 object-cover rounded-md"
+        />
+      )}
+      <p className="text-sm text-gray-500 mt-2">
         {new Date(post.created_at).toLocaleString()}
       </p>
       <div className="mt-2 flex items-center space-x-4">
@@ -63,7 +73,7 @@ function Post({ post }) {
           onClick={handleLike}
           className={`flex items-center space-x-1 ${
             isLiked ? 'text-red-500' : 'text-gray-500'
-          } hover:text-red-600`}
+          } hover:text-red-600 transition duration-200 ${animateLike ? 'scale-125' : ''}`}
         >
           <svg
             className="w-5 h-5"

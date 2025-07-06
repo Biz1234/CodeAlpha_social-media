@@ -6,16 +6,16 @@ const router = express.Router();
 
 // Create a post (protected)
 router.post('/', authMiddleware, (req, res) => {
-  const { content } = req.body;
+  const { content, image_url } = req.body;
   const userId = req.user.id;
 
-  if (!content) {
-    return res.status(400).json({ error: 'Content is required' });
+  if (!content && !image_url) {
+    return res.status(400).json({ error: 'Content or image is required' });
   }
 
   db.query(
-    'INSERT INTO posts (user_id, content) VALUES (?, ?)',
-    [userId, content],
+    'INSERT INTO posts (user_id, content, image_url) VALUES (?, ?, ?)',
+    [userId, content || null, image_url || null],
     (err, result) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
@@ -28,7 +28,7 @@ router.post('/', authMiddleware, (req, res) => {
 // Get all posts (public)
 router.get('/', (req, res) => {
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username,
+    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
             (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN users ON posts.user_id = users.id
@@ -46,7 +46,7 @@ router.get('/', (req, res) => {
 router.get('/user/:username', (req, res) => {
   const { username } = req.params;
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username,
+    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
             (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN users ON posts.user_id = users.id
@@ -62,11 +62,31 @@ router.get('/user/:username', (req, res) => {
   );
 });
 
+// Get posts with images by a user (public)
+router.get('/user/:username/media', (req, res) => {
+  const { username } = req.params;
+  db.query(
+    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
+            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
+     FROM posts
+     JOIN users ON posts.user_id = users.id
+     WHERE users.username = ? AND posts.image_url IS NOT NULL
+     ORDER BY posts.created_at DESC`,
+    [username],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(results);
+    }
+  );
+});
+
 // Get a single post with comments (public)
 router.get('/:postId', (req, res) => {
   const { postId } = req.params;
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username,
+    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
             (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN users ON posts.user_id = users.id
@@ -124,7 +144,6 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
   const { postId } = req.params;
   const userId = req.user.id;
 
-  // Check if the user already liked the post
   db.query(
     'SELECT * FROM likes WHERE user_id = ? AND post_id = ?',
     [userId, postId],
@@ -133,7 +152,6 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
         return res.status(500).json({ error: 'Database error' });
       }
       if (results.length > 0) {
-        // Unlike
         db.query(
           'DELETE FROM likes WHERE user_id = ? AND post_id = ?',
           [userId, postId],
@@ -145,7 +163,6 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
           }
         );
       } else {
-        // Like
         db.query(
           'INSERT INTO likes (user_id, post_id) VALUES (?, ?)',
           [userId, postId],

@@ -13,6 +13,7 @@ function Profile() {
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [activeTab, setActiveTab] = useState('posts');
 
   useEffect(() => {
     axios
@@ -47,7 +48,6 @@ function Profile() {
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
       setIsFollowing(!isFollowing);
-      // Refresh profile to update counts
       axios.get(`http://localhost:5000/api/users/${username}`).then((response) => setProfile(response.data));
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update follow status');
@@ -141,14 +141,28 @@ function Profile() {
         {/* Tabs */}
         <div className="mt-6">
           <div className="border-b">
-            <nav className="-mb-px flex">
-              <button className="px-4 py-2 border-b-2 border-blue-500 text-blue-500">
+            <nav className="-mb-px flex space-x-4">
+              <button
+                onClick={() => setActiveTab('posts')}
+                className={`px-4 py-2 border-b-2 ${
+                  activeTab === 'posts' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500'
+                }`}
+              >
                 Posts
+              </button>
+              <button
+                onClick={() => setActiveTab('likes')}
+                className={`px-4 py-2 border-b-2 ${
+                  activeTab === 'likes' ? 'border-blue-500 text-blue-500' : 'border-transparent text-gray-500'
+                }`}
+              >
+                Likes
               </button>
             </nav>
           </div>
           <div className="mt-4">
-            <Feed username={profile.username} />
+            {activeTab === 'posts' && <Feed username={profile.username} />}
+            {activeTab === 'likes' && <Feed username={profile.username} isLikedPosts />}
           </div>
         </div>
       </div>

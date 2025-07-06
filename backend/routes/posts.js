@@ -28,7 +28,8 @@ router.post('/', authMiddleware, (req, res) => {
 // Get all posts (public)
 router.get('/', (req, res) => {
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username
+    `SELECT posts.id, posts.content, posts.created_at, users.username,
+            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN users ON posts.user_id = users.id
      ORDER BY posts.created_at DESC`,
@@ -45,7 +46,8 @@ router.get('/', (req, res) => {
 router.get('/user/:username', (req, res) => {
   const { username } = req.params;
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username
+    `SELECT posts.id, posts.content, posts.created_at, users.username,
+            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN users ON posts.user_id = users.id
      WHERE users.username = ?
@@ -64,7 +66,8 @@ router.get('/user/:username', (req, res) => {
 router.get('/:postId', (req, res) => {
   const { postId } = req.params;
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username
+    `SELECT posts.id, posts.content, posts.created_at, users.username,
+            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN users ON posts.user_id = users.id
      WHERE posts.id = ?`,
@@ -112,6 +115,65 @@ router.post('/:postId/comments', authMiddleware, (req, res) => {
         return res.status(500).json({ error: 'Database error' });
       }
       res.status(201).json({ message: 'Comment created successfully', commentId: result.insertId });
+    }
+  );
+});
+
+// Like or unlike a post (protected)
+router.post('/:postId/like', authMiddleware, (req, res) => {
+  const { postId } = req.params;
+  const userId = req.user.id;
+
+  // Check if the user already liked the post
+  db.query(
+    'SELECT * FROM likes WHERE user_id = ? AND post_id = ?',
+    [userId, postId],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      if (results.length > 0) {
+        // Unlike
+        db.query(
+          'DELETE FROM likes WHERE user_id = ? AND post_id = ?',
+          [userId, postId],
+          (err) => {
+            if (err) {
+              return res.status(500).json({ error: 'Database error' });
+            }
+            res.json({ message: 'Unliked successfully' });
+          }
+        );
+      } else {
+        // Like
+        db.query(
+          'INSERT INTO likes (user_id, post_id) VALUES (?, ?)',
+          [userId, postId],
+          (err) => {
+            if (err) {
+              return res.status(500).json({ error: 'Database error' });
+            }
+            res.json({ message: 'Liked successfully' });
+          }
+        );
+      }
+    }
+  );
+});
+
+// Get like status for a post (protected)
+router.get('/:postId/like-status', authMiddleware, (req, res) => {
+  const { postId } = req.params;
+  const userId = req.user.id;
+
+  db.query(
+    'SELECT * FROM likes WHERE user_id = ? AND post_id = ?',
+    [userId, postId],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json({ isLiked: results.length > 0 });
     }
   );
 });

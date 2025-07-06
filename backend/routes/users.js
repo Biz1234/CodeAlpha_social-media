@@ -27,6 +27,7 @@ router.get('/:username', (req, res) => {
   );
 });
 
+// Get current user's profile (protected)
 router.get('/me', authMiddleware, (req, res) => {
   db.query(
     `SELECT id, username, email, full_name, bio, profile_picture, cover_photo, location, 
@@ -78,13 +79,11 @@ router.post('/follow/:userId', authMiddleware, (req, res) => {
     return res.status(400).json({ error: 'Cannot follow yourself' });
   }
 
-  // Check if already following
   db.query('SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?', [followerId, userId], (err, results) => {
     if (err) {
       return res.status(500).json({ error: 'Database error' });
     }
     if (results.length > 0) {
-      // Unfollow
       db.query('DELETE FROM followers WHERE follower_id = ? AND followed_id = ?', [followerId, userId], (err) => {
         if (err) {
           return res.status(500).json({ error: 'Database error' });
@@ -92,7 +91,6 @@ router.post('/follow/:userId', authMiddleware, (req, res) => {
         res.json({ message: 'Unfollowed successfully' });
       });
     } else {
-      // Follow
       db.query('INSERT INTO followers (follower_id, followed_id) VALUES (?, ?)', [followerId, userId], (err) => {
         if (err) {
           return res.status(500).json({ error: 'Database error' });
@@ -114,6 +112,27 @@ router.get('/follow-status/:userId', authMiddleware, (req, res) => {
     }
     res.json({ isFollowing: results.length > 0 });
   });
+});
+
+// Get posts liked by a user (public)
+router.get('/:username/liked-posts', (req, res) => {
+  const { username } = req.params;
+  db.query(
+    `SELECT posts.id, posts.content, posts.created_at, users.username,
+            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
+     FROM posts
+     JOIN likes ON posts.id = likes.post_id
+     JOIN users ON posts.user_id = users.id
+     WHERE likes.user_id = (SELECT id FROM users WHERE username = ?)
+     ORDER BY posts.created_at DESC`,
+    [username],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(results);
+    }
+  );
 });
 
 module.exports = router;

@@ -11,7 +11,8 @@ router.get('/:username', (req, res) => {
     `SELECT id, username, full_name, bio, profile_picture, cover_photo, location, website, 
             occupation, interests, pronouns, created_at,
             (SELECT COUNT(*) FROM followers WHERE followed_id = users.id) AS follower_count,
-            (SELECT COUNT(*) FROM followers WHERE follower_id = users.id) AS following_count
+            (SELECT COUNT(*) FROM followers WHERE follower_id = users.id) AS following_count,
+            (SELECT COUNT(*) FROM posts WHERE user_id = users.id) AS post_count
      FROM users WHERE username = ?`,
     [username],
     (err, results) => {
@@ -26,13 +27,13 @@ router.get('/:username', (req, res) => {
   );
 });
 
-// Get current user's profile (protected)
 router.get('/me', authMiddleware, (req, res) => {
   db.query(
     `SELECT id, username, email, full_name, bio, profile_picture, cover_photo, location, 
             website, occupation, interests, pronouns, created_at,
             (SELECT COUNT(*) FROM followers WHERE followed_id = users.id) AS follower_count,
-            (SELECT COUNT(*) FROM followers WHERE follower_id = users.id) AS following_count
+            (SELECT COUNT(*) FROM followers WHERE follower_id = users.id) AS following_count,
+            (SELECT COUNT(*) FROM posts WHERE user_id = users.id) AS post_count
      FROM users WHERE id = ?`,
     [req.user.id],
     (err, results) => {

@@ -3,7 +3,7 @@ import { useEffect, useState, useContext } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
-
+import Feed from '../post/Feed';
 
 function Profile() {
   const { username } = useParams();
@@ -15,12 +15,10 @@ function Profile() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Fetch profile
     axios
       .get(`http://localhost:5000/api/users/${username}`)
       .then((response) => {
         setProfile(response.data);
-        // Check follow status if logged in
         if (user) {
           axios
             .get(`http://localhost:5000/api/users/follow-status/${response.data.id}`, {
@@ -49,6 +47,8 @@ function Profile() {
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
       setIsFollowing(!isFollowing);
+      // Refresh profile to update counts
+      axios.get(`http://localhost:5000/api/users/${username}`).then((response) => setProfile(response.data));
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to update follow status');
     }
@@ -103,7 +103,8 @@ function Profile() {
           )}
           <div className="text-sm text-gray-500">
             <span>{profile.follower_count} Followers</span> |{' '}
-            <span>{profile.following_count} Following</span> | <span>0 Posts</span>
+            <span>{profile.following_count} Following</span> |{' '}
+            <span>{profile.post_count || 0} Posts</span>
           </div>
         </div>
         {/* Additional Info */}
@@ -137,18 +138,17 @@ function Profile() {
             </p>
           )}
         </div>
-        {/* Tabs (Posts for now) */}
+        {/* Tabs */}
         <div className="mt-6">
           <div className="border-b">
             <nav className="-mb-px flex">
               <button className="px-4 py-2 border-b-2 border-blue-500 text-blue-500">
                 Posts
               </button>
-              {/* Add more tabs later */}
             </nav>
           </div>
           <div className="mt-4">
-            <p className="text-gray-500">No posts yet</p>
+            <Feed username={profile.username} />
           </div>
         </div>
       </div>

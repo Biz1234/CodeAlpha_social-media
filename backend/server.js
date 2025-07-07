@@ -5,7 +5,7 @@ const db = require('./config/db');
 const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const postRoutes = require('./routes/posts');
-
+const messageRoutes = require('./routes/messages');
 dotenv.config();
 
 const app = express();
@@ -22,7 +22,7 @@ app.use(cors());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/posts', postRoutes);
-
+app.use('/api/messages', messageRoutes);
 
 
 

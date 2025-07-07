@@ -4,6 +4,25 @@ const db = require('../config/db');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 
+// Search users by username (public)
+router.get('/search', (req, res) => {
+  const { query } = req.query;
+  if (!query) {
+    return res.status(400).json({ error: 'Search query is required' });
+  }
+  db.query(
+    'SELECT id, username FROM users WHERE username LIKE ?',
+    [`%${query}%`],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      res.json(results);
+    }
+  );
+});
+
+
 // Get user profile by username (public)
 router.get('/:username', (req, res) => {
   const { username } = req.params;
@@ -118,7 +137,7 @@ router.get('/follow-status/:userId', authMiddleware, (req, res) => {
 router.get('/:username/liked-posts', (req, res) => {
   const { username } = req.params;
   db.query(
-    `SELECT posts.id, posts.content, posts.created_at, users.username,
+    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
             (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
      FROM posts
      JOIN likes ON posts.id = likes.post_id
@@ -135,4 +154,9 @@ router.get('/:username/liked-posts', (req, res) => {
   );
 });
 
+ 
+
 module.exports = router;
+
+
+

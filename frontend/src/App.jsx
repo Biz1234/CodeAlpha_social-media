@@ -6,7 +6,7 @@ import Profile from './components/profile/Profile';
 import EditProfile from './components/profile/EditProfile';
 import Navbar from './components/common/Navbar';
 import Home from './components/post/Home';
-
+import Messages from './components/messages/Messages';
 function App() {
   return (
     <BrowserRouter>
@@ -17,6 +17,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/profile/:username" element={<Profile />} />
         <Route path="/edit-profile" element={<EditProfile />} />
+        <Route path="/messages" element={<Messages />} />
       </Routes>
     </BrowserRouter>
   );

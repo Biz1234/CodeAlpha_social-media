@@ -1,12 +1,13 @@
 
 import { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 
 function Messages() {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [conversations, setConversations] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -15,6 +16,27 @@ function Messages() {
   const [searchResults, setSearchResults] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+
+  // Handle userId from query parameter
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const userId = params.get('userId');
+    if (userId && user) {
+      axios
+        .get(`http://localhost:5000/api/users/search?query=${userId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        })
+        .then((response) => {
+          const targetUser = response.data.find((u) => u.id === parseInt(userId));
+          if (targetUser) {
+            setSelectedUser(targetUser);
+          }
+        })
+        .catch((err) => {
+          setError(err.response?.data?.error || 'Failed to load user');
+        });
+    }
+  }, [location, user]);
 
   // Fetch conversations
   useEffect(() => {
@@ -75,7 +97,9 @@ function Messages() {
   useEffect(() => {
     if (searchQuery.trim()) {
       axios
-        .get(`http://localhost:5000/api/users/search?query=${searchQuery}`)
+        .get(`http://localhost:5000/api/users/search?query=${searchQuery}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        })
         .then((response) => {
           setSearchResults(response.data.filter((u) => u.id !== user.id));
         })
@@ -110,6 +134,7 @@ function Messages() {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
       });
       setConversations(convResponse.data);
+      setError('');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to send message');
     }
@@ -194,6 +219,7 @@ function Messages() {
                 </div>
               ))}
             </div>
+            {error && <p className="text-red-500 mb-2">{error}</p>}
             <form onSubmit={handleSendMessage} className="flex space-x-2">
               <input
                 type="text"

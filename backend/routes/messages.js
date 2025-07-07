@@ -1,5 +1,4 @@
 
-
 const express = require('express');
 const db = require('../config/db');
 const authMiddleware = require('../middleware/auth');
@@ -19,15 +18,47 @@ router.post('/', authMiddleware, (req, res) => {
   }
 
   db.query(
-    'INSERT INTO messages (sender_id, recipient_id, content) VALUES (?, ?, ?)',
-    [sender_id, recipient_id, content],
-    (err, result) => {
+    'SELECT private FROM users WHERE id = ?',
+    [recipient_id],
+    (err, results) => {
       if (err) {
         return res.status(500).json({ error: 'Database error' });
       }
-      res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
+      if (results.length === 0) {
+        return res.status(404).json({ error: 'Recipient not found' });
+      }
+      if (results[0].private) {
+        db.query(
+          'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
+          [sender_id, recipient_id],
+          (err, followerResults) => {
+            if (err) {
+              return res.status(500).json({ error: 'Database error' });
+            }
+            if (followerResults.length === 0) {
+              return res.status(403).json({ error: 'Cannot message private account unless following' });
+            }
+            sendMessage();
+          }
+        );
+      } else {
+        sendMessage();
+      }
     }
   );
+
+  function sendMessage() {
+    db.query(
+      'INSERT INTO messages (sender_id, recipient_id, content) VALUES (?, ?, ?)',
+      [sender_id, recipient_id, content],
+      (err, result) => {
+        if (err) {
+          return res.status(500).json({ error: 'Database error' });
+        }
+        res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
+      }
+    );
+  }
 });
 
 // Get conversations (protected)

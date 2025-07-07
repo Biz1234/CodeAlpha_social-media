@@ -4,6 +4,28 @@ const db = require('../config/db');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
+const multer = require('multer'); 
+// Configure Multer for image uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'uploads/');
+  },
+  filename: (req, file, cb) => {
+    cb(null, `${Date.now()}-${file.originalname}`);
+  },
+});
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    const filetypes = /jpeg|jpg|png/;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = filetypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error('Images only (JPEG/PNG)'));
+  },
+});
 
 // Optional auth parser to access req.user even on public routes
 router.use((req, res, next) => {
@@ -19,10 +41,11 @@ router.use((req, res, next) => {
   next();
 });
 
-// Create a post (protected)
-router.post('/', authMiddleware, (req, res) => {
-  const { content, image_url } = req.body;
+// Create a post (protected) with image upload
+router.post('/', authMiddleware, upload.single('image'), (req, res) => {
+  const { content } = req.body;
   const userId = req.user.id;
+  const image_url = req.file ? `/uploads/${req.file.filename}` : null;
 
   if (!content && !image_url) {
     return res.status(400).json({ error: 'Content or image is required' });
@@ -30,18 +53,38 @@ router.post('/', authMiddleware, (req, res) => {
 
   db.query(
     'INSERT INTO posts (user_id, content, image_url) VALUES (?, ?, ?)',
-    [userId, content || null, image_url || null],
+    [userId, content || null, image_url],
     (err, result) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
-      res.status(201).json({ message: 'Post created successfully', postId: result.insertId });
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      const postId = result.insertId;
+      // Fetch the new post
+      db.query(
+        `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
+                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
+                users.private, users.id AS user_id
+         FROM posts
+         JOIN users ON posts.user_id = users.id
+         WHERE posts.id = ?`,
+        [postId],
+        (err, postResults) => {
+          if (err) {
+            return res.status(500).json({ error: 'Database error' });
+          }
+          // Emit new post event
+          const io = req.app.get('io');
+          io.emit('new_post', postResults[0]);
+          res.status(201).json({ message: 'Post created successfully', postId });
+        }
+      );
     }
   );
 });
 
-// Get all posts (public or filtered by auth/follow)
+// Get all posts (public or restricted)
 router.get('/', (req, res) => {
-  const currentUserId = req.user?.id || null;
-
+  const currentUserId = req.user ? req.user.id : null;
   db.query(
     `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
             (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
@@ -49,32 +92,45 @@ router.get('/', (req, res) => {
      FROM posts
      JOIN users ON posts.user_id = users.id
      ORDER BY posts.created_at DESC`,
-    async (err, results) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
-
-      const filtered = await Promise.all(results.map(post => {
-        return new Promise((resolve) => {
-          if (!post.private || (currentUserId && post.user_id === currentUserId)) {
-            return resolve(post);
-          }
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({ error: 'Database error' });
+      }
+      // Filter posts: show public posts, own posts, or posts from followed private accounts
+      const filteredPosts = [];
+      results.forEach((post) => {
+        if (!post.private || (currentUserId && (post.user_id === currentUserId))) {
+          filteredPosts.push(post);
+        } else if (post.private && currentUserId) {
           db.query(
             'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
             [currentUserId, post.user_id],
-            (err, followers) => {
-              if (!err && followers.length > 0) {
-                resolve(post);
-              } else {
-                resolve(null);
+            (err, followerResults) => {
+              if (err) {
+                console.error(err);
+                return;
+              }
+              if (followerResults.length > 0) {
+                filteredPosts.push(post);
+              }
+              if (filteredPosts.length === results.length || results.length === 0) {
+                res.json(filteredPosts);
               }
             }
           );
-        });
-      }));
-
-      res.json(filtered.filter(Boolean)); // Remove nulls
+        } else {
+          if (filteredPosts.length === results.length || results.length === 0) {
+            res.json(filteredPosts);
+          }
+        }
+      });
+      if (results.length === 0) {
+        res.json([]);
+      }
     }
   );
 });
+
 
 // Get all posts by a user (public or restricted)
 router.get('/user/:username', (req, res) => {

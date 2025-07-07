@@ -4,15 +4,39 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
 import Post from './Post';
+import { io } from 'socket.io-client';
 
 function Feed({ username, isMedia, isLikedPosts }) {
   const { user } = useContext(AuthContext);
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [newPost, setNewPost] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [image, setImage] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [socket, setSocket] = useState(null);
+
+  useEffect(() => {
+    const newSocket = io('http://localhost:5000');
+    setSocket(newSocket);
+    return () => newSocket.close();
+  }, []);
+
+  useEffect(() => {
+    if (socket && user) {
+      socket.emit('join', user.id);
+      socket.on('new_post', (post) => {
+        if (!username || post.username === username) {
+          setPosts((prev) => [post, ...prev]);
+        }
+      });
+      socket.on('update_post', (updatedPost) => {
+        setPosts((prev) =>
+          prev.map((post) => (post.id === updatedPost.id ? updatedPost : post))
+        );
+      });
+    }
+  }, [socket, user, username]);
 
   useEffect(() => {
     let url = 'http://localhost:5000/api/posts';
@@ -37,54 +61,29 @@ function Feed({ username, isMedia, isLikedPosts }) {
       });
   }, [username, isMedia, isLikedPosts, user]);
 
-  // Poll for new posts every 10 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      let url = 'http://localhost:5000/api/posts';
-      if (username) {
-        url = isMedia
-          ? `http://localhost:5000/api/posts/user/${username}/media`
-          : isLikedPosts
-          ? `http://localhost:5000/api/users/${username}/liked-posts`
-          : `http://localhost:5000/api/posts/user/${username}`;
-      }
-      axios
-        .get(url, {
-          headers: user ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {},
-        })
-        .then((response) => {
-          setPosts(response.data);
-        })
-        .catch((err) => {
-          console.error(err);
-        });
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [username, isMedia, isLikedPosts, user]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!user) {
       navigate('/login');
       return;
     }
-    if (!newPost && !imageUrl) {
+    if (!newPost && !image) {
       setError('Post content or image is required');
       return;
     }
+    const formData = new FormData();
+    if (newPost) formData.append('content', newPost);
+    if (image) formData.append('image', image);
     try {
-      await axios.post(
-        'http://localhost:5000/api/posts',
-        { content: newPost, image_url: imageUrl },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      );
-      setNewPost('');
-      setImageUrl('');
-      setError('');
-      const response = await axios.get('http://localhost:5000/api/posts', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      await axios.post('http://localhost:5000/api/posts', formData, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'multipart/form-data',
+        },
       });
-      setPosts(response.data);
+      setNewPost('');
+      setImage(null);
+      setError('');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to create post');
     }
@@ -104,10 +103,9 @@ function Feed({ username, isMedia, isLikedPosts }) {
             className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
-            type="text"
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="Image URL (optional)"
+            type="file"
+            accept="image/jpeg,image/png"
+            onChange={(e) => setImage(e.target.files[0])}
             className="w-full p-2 mt-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           {error && <p className="text-red-500 mt-2">{error}</p>}

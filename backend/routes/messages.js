@@ -55,7 +55,24 @@ router.post('/', authMiddleware, (req, res) => {
         if (err) {
           return res.status(500).json({ error: 'Database error' });
         }
-        res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
+        // Fetch the new message
+        db.query(
+          `SELECT m.id, m.sender_id, m.recipient_id, m.content, m.created_at, u.username
+           FROM messages m
+           JOIN users u ON u.id = m.sender_id
+           WHERE m.id = ?`,
+          [result.insertId],
+          (err, messageResults) => {
+            if (err) {
+              return res.status(500).json({ error: 'Database error' });
+            }
+            const io = req.app.get('io');
+            // Emit to both sender and recipient
+            io.to(`user_${sender_id}`).emit('new_message', messageResults[0]);
+            io.to(`user_${recipient_id}`).emit('new_message', messageResults[0]);
+            res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
+          }
+        );
       }
     );
   }

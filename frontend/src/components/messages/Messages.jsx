@@ -3,6 +3,7 @@ import { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../context/AuthContext';
+import { io } from 'socket.io-client';
 
 function Messages() {
   const { user } = useContext(AuthContext);
@@ -16,6 +17,38 @@ function Messages() {
   const [searchResults, setSearchResults] = useState([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [socket, setSocket] = useState(null);
+
+  useEffect(() => {
+    const newSocket = io('http://localhost:5000');
+    setSocket(newSocket);
+    return () => newSocket.close();
+  }, []);
+
+  useEffect(() => {
+    if (socket && user) {
+      socket.emit('join', user.id);
+      socket.on('new_message', (message) => {
+        if (
+          selectedUser &&
+          (message.sender_id === selectedUser.id || message.recipient_id === selectedUser.id)
+        ) {
+          setMessages((prev) => [...prev, message]);
+        }
+        // Update conversations
+        axios
+          .get('http://localhost:5000/api/messages/conversations', {
+            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+          })
+          .then((response) => {
+            setConversations(response.data);
+          })
+          .catch((err) => {
+            console.error(err);
+          });
+      });
+    }
+  }, [socket, user, selectedUser]);
 
   // Handle userId from query parameter
   useEffect(() => {
@@ -74,25 +107,6 @@ function Messages() {
     }
   }, [selectedUser]);
 
-  // Poll for new messages every 10 seconds
-  useEffect(() => {
-    if (selectedUser) {
-      const interval = setInterval(() => {
-        axios
-          .get(`http://localhost:5000/api/messages/${selectedUser.id}`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-          })
-          .then((response) => {
-            setMessages(response.data);
-          })
-          .catch((err) => {
-            console.error(err);
-          });
-      }, 10000);
-      return () => clearInterval(interval);
-    }
-  }, [selectedUser]);
-
   // Search for users
   useEffect(() => {
     if (searchQuery.trim()) {
@@ -124,16 +138,6 @@ function Messages() {
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
       setNewMessage('');
-      // Refresh messages
-      const response = await axios.get(`http://localhost:5000/api/messages/${selectedUser.id}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      setMessages(response.data);
-      // Refresh conversations
-      const convResponse = await axios.get('http://localhost:5000/api/messages/conversations', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      });
-      setConversations(convResponse.data);
       setError('');
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to send message');

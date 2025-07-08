@@ -1,4 +1,3 @@
-
 const express = require('express');
 const db = require('../config/db');
 const authMiddleware = require('../middleware/auth');
@@ -6,6 +5,7 @@ const router = express.Router();
 
 // Send a message (protected)
 router.post('/', authMiddleware, (req, res) => {
+  console.log('POST /api/messages:', { body: req.body, user: req.user });
   const { recipient_id, content } = req.body;
   const sender_id = req.user.id;
 
@@ -22,6 +22,7 @@ router.post('/', authMiddleware, (req, res) => {
     [recipient_id],
     (err, results) => {
       if (err) {
+        console.error('POST /api/messages user error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (results.length === 0) {
@@ -33,6 +34,7 @@ router.post('/', authMiddleware, (req, res) => {
           [sender_id, recipient_id],
           (err, followerResults) => {
             if (err) {
+              console.error('POST /api/messages followers error:', err);
               return res.status(500).json({ error: 'Database error' });
             }
             if (followerResults.length === 0) {
@@ -53,6 +55,7 @@ router.post('/', authMiddleware, (req, res) => {
       [sender_id, recipient_id, content],
       (err, result) => {
         if (err) {
+          console.error('POST /api/messages insert error:', err);
           return res.status(500).json({ error: 'Database error' });
         }
         // Fetch the new message
@@ -64,12 +67,17 @@ router.post('/', authMiddleware, (req, res) => {
           [result.insertId],
           (err, messageResults) => {
             if (err) {
+              console.error('POST /api/messages fetch error:', err);
               return res.status(500).json({ error: 'Database error' });
             }
-            const io = req.app.get('io');
-            // Emit to both sender and recipient
-            io.to(`user_${sender_id}`).emit('new_message', messageResults[0]);
-            io.to(`user_${recipient_id}`).emit('new_message', messageResults[0]);
+            const io = req.io; // Use req.io from middleware
+            if (io) {
+              console.log('POST /api/messages: Emitting new_message:', messageResults[0]);
+              io.to(`user_${sender_id}`).emit('new_message', messageResults[0]);
+              io.to(`user_${recipient_id}`).emit('new_message', messageResults[0]);
+            } else {
+              console.error('POST /api/messages: Socket.IO instance not available');
+            }
             res.status(201).json({ message: 'Message sent successfully', messageId: result.insertId });
           }
         );
@@ -80,6 +88,7 @@ router.post('/', authMiddleware, (req, res) => {
 
 // Get conversations (protected)
 router.get('/conversations', authMiddleware, (req, res) => {
+  console.log('GET /api/messages/conversations:', { user: req.user });
   const userId = req.user.id;
   db.query(
     `SELECT DISTINCT u.id, u.username
@@ -93,8 +102,10 @@ router.get('/conversations', authMiddleware, (req, res) => {
     [userId, userId],
     (err, results) => {
       if (err) {
+        console.error('GET /api/messages/conversations error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
+      console.log('GET /api/messages/conversations results:', results);
       res.json(results);
     }
   );
@@ -102,6 +113,7 @@ router.get('/conversations', authMiddleware, (req, res) => {
 
 // Get messages with a specific user (protected)
 router.get('/:userId', authMiddleware, (req, res) => {
+  console.log('GET /api/messages/:userId:', { userId: req.params.userId, user: req.user });
   const { userId } = req.params;
   const currentUserId = req.user.id;
 
@@ -114,8 +126,10 @@ router.get('/:userId', authMiddleware, (req, res) => {
     [currentUserId, userId, userId, currentUserId],
     (err, results) => {
       if (err) {
+        console.error('GET /api/messages/:userId error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
+      console.log('GET /api/messages/:userId results:', results);
       res.json(results);
     }
   );

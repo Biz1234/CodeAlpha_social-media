@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
@@ -14,6 +13,7 @@ function Post({ post }) {
   const [isLiked, setIsLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(post.like_count || 0);
   const [animateLike, setAnimateLike] = useState(false);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -21,46 +21,63 @@ function Post({ post }) {
         .get(`http://localhost:5000/api/posts/${post.id}/like-status`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
         })
-        .then((response) => setIsLiked(response.data.isLiked))
-        .catch((err) => console.error(err));
+        .then((response) => {
+          console.log('Post: Like status fetched:', response.data);
+          setIsLiked(response.data.isLiked);
+        })
+        .catch((err) => {
+          console.error('Post: Like status error:', err.response?.data?.error, err.response?.status);
+          setError('Failed to load like status');
+        });
     }
     if (showComments) {
       axios
         .get(`http://localhost:5000/api/posts/${post.id}`)
-        .then((response) => setComments(response.data.comments))
-        .catch((err) => console.error(err));
+        .then((response) => {
+          console.log('Post: Comments fetched:', response.data.comments);
+          setComments(response.data.comments || []);
+        })
+        .catch((err) => {
+          console.error('Post: Comments fetch error:', err.response?.data?.error, err.response?.status);
+          setError('Failed to fetch comments');
+        });
     }
   }, [showComments, post.id, user]);
 
   const handleLike = async () => {
     if (!user) {
+      setError('You must be logged in to like posts');
       navigate('/login');
       return;
     }
     try {
-      await axios.post(
+      const response = await axios.post(
         `http://localhost:5000/api/posts/${post.id}/like`,
         {},
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
+      console.log('Post: Like updated:', response.data);
       setIsLiked(!isLiked);
       setLikeCount(isLiked ? likeCount - 1 : likeCount + 1);
       setAnimateLike(true);
-      setTimeout(() => setAnimateLike(false), 300); // Reset animation
+      setTimeout(() => setAnimateLike(false), 300);
+      setError('');
     } catch (err) {
-      console.error(err);
+      console.error('Post: Like error:', err.response?.data?.error, err.response?.status);
+      setError('Failed to update like');
     }
   };
 
   return (
     <div className="p-4 bg-white rounded-lg shadow-md mb-4">
+      {error && <p className="text-red-500 mb-2">{error}</p>}
       <Link to={`/profile/${post.username}`} className="font-bold text-blue-600 hover:underline">
         @{post.username}
       </Link>
       <p className="mt-2 text-gray-800">{post.content}</p>
       {post.image_url && (
         <img
-          src={post.image_url}
+          src={`http://localhost:5000${post.image_url}`}
           alt="Post media"
           className="mt-2 w-full h-64 object-cover rounded-md"
         />

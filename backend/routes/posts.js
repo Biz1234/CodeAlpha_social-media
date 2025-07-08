@@ -1,14 +1,15 @@
-
 const express = require('express');
 const db = require('../config/db');
 const jwt = require('jsonwebtoken');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
-const multer = require('multer'); 
+const multer = require('multer');
+const path = require('path');
+
 // Configure Multer for image uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/');
+    cb(null, 'Uploads/');
   },
   filename: (req, file, cb) => {
     cb(null, `${Date.now()}-${file.originalname}`);
@@ -27,7 +28,7 @@ const upload = multer({
   },
 });
 
-// Optional auth parser to access req.user even on public routes
+// Middleware to decode token (optional user)
 router.use((req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (token) {
@@ -41,25 +42,24 @@ router.use((req, res, next) => {
   next();
 });
 
-// Create a post (protected) with image upload
+// POST / - Create post (protected)
 router.post('/', authMiddleware, upload.single('image'), (req, res) => {
+  console.log('POST /api/posts:', { body: req.body, file: req.file, user: req.user });
   const { content } = req.body;
   const userId = req.user.id;
-  const image_url = req.file ? `/uploads/${req.file.filename}` : null;
-
+  const image_url = req.file ? `/Uploads/${req.file.filename}` : null;
   if (!content && !image_url) {
     return res.status(400).json({ error: 'Content or image is required' });
   }
-
   db.query(
     'INSERT INTO posts (user_id, content, image_url) VALUES (?, ?, ?)',
     [userId, content || null, image_url],
     (err, result) => {
       if (err) {
+        console.error('POST /api/posts error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       const postId = result.insertId;
-      // Fetch the new post
       db.query(
         `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
                 (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
@@ -70,9 +70,10 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
         [postId],
         (err, postResults) => {
           if (err) {
+            console.error('POST /api/posts fetch error:', err);
             return res.status(500).json({ error: 'Database error' });
           }
-          // Emit new post event
+          console.log('POST /api/posts: Emitting new_post:', postResults[0]);
           const io = req.app.get('io');
           io.emit('new_post', postResults[0]);
           res.status(201).json({ message: 'Post created successfully', postId });
@@ -82,121 +83,17 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
   );
 });
 
-// Get all posts (public or restricted)
-router.get('/', (req, res) => {
-  const currentUserId = req.user ? req.user.id : null;
-  db.query(
-    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
-            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
-            users.private, users.id AS user_id
-     FROM posts
-     JOIN users ON posts.user_id = users.id
-     ORDER BY posts.created_at DESC`,
-    (err, results) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      // Filter posts: show public posts, own posts, or posts from followed private accounts
-      const filteredPosts = [];
-      results.forEach((post) => {
-        if (!post.private || (currentUserId && (post.user_id === currentUserId))) {
-          filteredPosts.push(post);
-        } else if (post.private && currentUserId) {
-          db.query(
-            'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
-            [currentUserId, post.user_id],
-            (err, followerResults) => {
-              if (err) {
-                console.error(err);
-                return;
-              }
-              if (followerResults.length > 0) {
-                filteredPosts.push(post);
-              }
-              if (filteredPosts.length === results.length || results.length === 0) {
-                res.json(filteredPosts);
-              }
-            }
-          );
-        } else {
-          if (filteredPosts.length === results.length || results.length === 0) {
-            res.json(filteredPosts);
-          }
-        }
-      });
-      if (results.length === 0) {
-        res.json([]);
-      }
-    }
-  );
-});
-
-
-// Get all posts by a user (public or restricted)
-router.get('/user/:username', (req, res) => {
-  const { username } = req.params;
-  const currentUserId = req.user ? req.user.id : null;
-
-  db.query(
-    'SELECT id, private FROM users WHERE username = ?',
-    [username],
-    (err, userResults) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-      if (userResults.length === 0) {
-        return res.status(404).json({ error: 'User not found' });
-      }
-      const user = userResults[0];
-      if (user.private && (!currentUserId || currentUserId !== user.id)) {
-        db.query(
-          'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
-          [currentUserId, user.id],
-          (err, followerResults) => {
-            if (err) {
-              return res.status(500).json({ error: 'Database error' });
-            }
-            if (followerResults.length === 0) {
-              return res.status(403).json({ error: 'This account is private' });
-            }
-            fetchUserPosts();
-          }
-        );
-      } else {
-        fetchUserPosts();
-      }
-    }
-  );
-
-  function fetchUserPosts() {
-    db.query(
-      `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
-              (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
-       FROM posts
-       JOIN users ON posts.user_id = users.id
-       WHERE users.username = ?
-       ORDER BY posts.created_at DESC`,
-      [username],
-      (err, results) => {
-        if (err) {
-          return res.status(500).json({ error: 'Database error' });
-        }
-        res.json(results);
-      }
-    );
-  }
-});
-
-// Get posts with images by a user (public or restricted)
+// GET /user/:username/media
 router.get('/user/:username/media', (req, res) => {
+  console.log('GET /api/posts/user/:username/media:', { username: req.params.username, user: req.user });
   const { username } = req.params;
   const currentUserId = req.user ? req.user.id : null;
-
   db.query(
     'SELECT id, private FROM users WHERE username = ?',
     [username],
     (err, userResults) => {
       if (err) {
+        console.error('GET /api/posts/user/:username/media user error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (userResults.length === 0) {
@@ -209,6 +106,7 @@ router.get('/user/:username/media', (req, res) => {
           [currentUserId, user.id],
           (err, followerResults) => {
             if (err) {
+              console.error('GET /api/posts/user/:username/media followers error:', err);
               return res.status(500).json({ error: 'Database error' });
             }
             if (followerResults.length === 0) {
@@ -222,7 +120,6 @@ router.get('/user/:username/media', (req, res) => {
       }
     }
   );
-
   function fetchMediaPosts() {
     db.query(
       `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
@@ -234,88 +131,108 @@ router.get('/user/:username/media', (req, res) => {
       [username],
       (err, results) => {
         if (err) {
+          console.error('GET /api/posts/user/:username/media posts error:', err);
           return res.status(500).json({ error: 'Database error' });
         }
+        console.log('GET /api/posts/user/:username/media results:', results);
         res.json(results);
       }
     );
   }
 });
 
-// Get a single post with comments (public or restricted)
-router.get('/:postId', (req, res) => {
-  const { postId } = req.params;
+// GET /user/:username
+router.get('/user/:username', (req, res) => {
+  console.log('GET /api/posts/user/:username:', { username: req.params.username, user: req.user });
+  const { username } = req.params;
   const currentUserId = req.user ? req.user.id : null;
-
   db.query(
-    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
-            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
-            users.private, users.id AS user_id
-     FROM posts
-     JOIN users ON posts.user_id = users.id
-     WHERE posts.id = ?`,
-    [postId],
-    (err, postResults) => {
+    'SELECT id, private FROM users WHERE username = ?',
+    [username],
+    (err, userResults) => {
       if (err) {
+        console.error('GET /api/posts/user/:username user error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-      if (postResults.length === 0) {
-        return res.status(404).json({ error: 'Post not found' });
+      if (userResults.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
       }
-      const post = postResults[0];
-      if (post.private && (!currentUserId || currentUserId !== post.user_id)) {
+      const user = userResults[0];
+      if (user.private && (!currentUserId || currentUserId !== user.id)) {
         db.query(
           'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
-          [currentUserId, post.user_id],
+          [currentUserId, user.id],
           (err, followerResults) => {
             if (err) {
+              console.error('GET /api/posts/user/:username followers error:', err);
               return res.status(500).json({ error: 'Database error' });
             }
             if (followerResults.length === 0) {
               return res.status(403).json({ error: 'This account is private' });
             }
-            fetchPostComments();
+            fetchUserPosts();
           }
         );
       } else {
-        fetchPostComments();
+        fetchUserPosts();
       }
+    }
+  );
+  function fetchUserPosts() {
+    db.query(
+      `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
+              (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count
+       FROM posts
+       JOIN users ON posts.user_id = users.id
+       WHERE users.username = ?
+       ORDER BY posts.created_at DESC`,
+      [username],
+      (err, results) => {
+        if (err) {
+          console.error('GET /api/posts/user/:username posts error:', err);
+          return res.status(500).json({ error: 'Database error' });
+        }
+        console.log('GET /api/posts/user/:username results:', results);
+        res.json(results);
+      }
+    );
+  }
+});
 
-      function fetchPostComments() {
-        db.query(
-          `SELECT comments.id, comments.content, comments.created_at, users.username
-           FROM comments
-           JOIN users ON comments.user_id = users.id
-           WHERE comments.post_id = ?
-           ORDER BY comments.created_at ASC`,
-          [postId],
-          (err, commentResults) => {
-            if (err) {
-              return res.status(500).json({ error: 'Database error' });
-            }
-            res.json({ post: postResults[0], comments: commentResults });
-          }
-        );
+// GET /:postId/like-status
+router.get('/:postId/like-status', authMiddleware, (req, res) => {
+  console.log('GET /api/posts/:postId/like-status:', { postId: req.params.postId, user: req.user });
+  const { postId } = req.params;
+  const userId = req.user.id;
+  db.query(
+    'SELECT * FROM likes WHERE user_id = ? AND post_id = ?',
+    [userId, postId],
+    (err, results) => {
+      if (err) {
+        console.error('GET /api/posts/:postId/like-status error:', err);
+        return res.status(500).json({ error: 'Database error' });
       }
+      console.log('GET /api/posts/:postId/like-status results:', results);
+      res.json({ isLiked: results.length > 0 });
     }
   );
 });
 
-// Create a comment (protected)
+// POST /:postId/comments
 router.post('/:postId/comments', authMiddleware, (req, res) => {
+  console.log('POST /api/posts/:postId/comments:', { postId: req.params.postId, body: req.body, user: req.user });
   const { postId } = req.params;
   const { content } = req.body;
   const userId = req.user.id;
-
   if (!content) {
     return res.status(400).json({ error: 'Content is required' });
   }
-
   db.query(
     'SELECT user_id, private FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ?',
     [postId],
     (err, results) => {
       if (err) {
+        console.error('POST /api/posts/:postId/comments post error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (results.length === 0) {
@@ -328,6 +245,7 @@ router.post('/:postId/comments', authMiddleware, (req, res) => {
           [userId, post.user_id],
           (err, followerResults) => {
             if (err) {
+              console.error('POST /api/posts/:postId/comments followers error:', err);
               return res.status(500).json({ error: 'Database error' });
             }
             if (followerResults.length === 0) {
@@ -341,31 +259,33 @@ router.post('/:postId/comments', authMiddleware, (req, res) => {
       }
     }
   );
-
   function createComment() {
     db.query(
       'INSERT INTO comments (post_id, user_id, content) VALUES (?, ?, ?)',
       [postId, userId, content],
       (err, result) => {
         if (err) {
+          console.error('POST /api/posts/:postId/comments insert error:', err);
           return res.status(500).json({ error: 'Database error' });
         }
+        console.log('POST /api/posts/:postId/comments: Comment created:', { commentId: result.insertId });
         res.status(201).json({ message: 'Comment created successfully', commentId: result.insertId });
       }
     );
   }
 });
 
-// Like or unlike a post (protected)
+// POST /:postId/like
 router.post('/:postId/like', authMiddleware, (req, res) => {
+  console.log('POST /api/posts/:postId/like:', { postId: req.params.postId, user: req.user });
   const { postId } = req.params;
   const userId = req.user.id;
-
   db.query(
     'SELECT user_id, private FROM posts JOIN users ON posts.user_id = users.id WHERE posts.id = ?',
     [postId],
     (err, results) => {
       if (err) {
+        console.error('POST /api/posts/:postId/like post error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
       if (results.length === 0) {
@@ -378,6 +298,7 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
           [userId, post.user_id],
           (err, followerResults) => {
             if (err) {
+              console.error('POST /api/posts/:postId/like followers error:', err);
               return res.status(500).json({ error: 'Database error' });
             }
             if (followerResults.length === 0) {
@@ -391,13 +312,13 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
       }
     }
   );
-
   function toggleLike() {
     db.query(
       'SELECT * FROM likes WHERE user_id = ? AND post_id = ?',
       [userId, postId],
       (err, results) => {
         if (err) {
+          console.error('POST /api/posts/:postId/like check error:', err);
           return res.status(500).json({ error: 'Database error' });
         }
         if (results.length > 0) {
@@ -406,8 +327,10 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
             [userId, postId],
             (err) => {
               if (err) {
+                console.error('POST /api/posts/:postId/like delete error:', err);
                 return res.status(500).json({ error: 'Database error' });
               }
+              console.log('POST /api/posts/:postId/like: Unliked');
               res.json({ message: 'Unliked successfully' });
             }
           );
@@ -417,8 +340,10 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
             [userId, postId],
             (err) => {
               if (err) {
+                console.error('POST /api/posts/:postId/like insert error:', err);
                 return res.status(500).json({ error: 'Database error' });
               }
+              console.log('POST /api/posts/:postId/like: Liked');
               res.json({ message: 'Liked successfully' });
             }
           );
@@ -428,21 +353,117 @@ router.post('/:postId/like', authMiddleware, (req, res) => {
   }
 });
 
-// Get like status for a post (protected)
-router.get('/:postId/like-status', authMiddleware, (req, res) => {
+// GET /:postId
+router.get('/:postId', (req, res) => {
+  console.log('GET /api/posts/:postId:', { postId: req.params.postId, user: req.user });
   const { postId } = req.params;
-  const userId = req.user.id;
-
+  const currentUserId = req.user ? req.user.id : null;
   db.query(
-    'SELECT * FROM likes WHERE user_id = ? AND post_id = ?',
-    [userId, postId],
-    (err, results) => {
+    `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
+            (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
+            users.private, users.id AS user_id
+     FROM posts
+     JOIN users ON posts.user_id = users.id
+     WHERE posts.id = ?`,
+    [postId],
+    (err, postResults) => {
       if (err) {
+        console.error('GET /api/posts/:postId post error:', err);
         return res.status(500).json({ error: 'Database error' });
       }
-      res.json({ isLiked: results.length > 0 });
+      if (postResults.length === 0) {
+        return res.status(404).json({ error: 'Post not found' });
+      }
+      const post = postResults[0];
+      if (post.private && (!currentUserId || currentUserId !== post.user_id)) {
+        db.query(
+          'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
+          [currentUserId, post.user_id],
+          (err, followerResults) => {
+            if (err) {
+              console.error('GET /api/posts/:postId followers error:', err);
+              return res.status(500).json({ error: 'Database error' });
+            }
+            if (followerResults.length === 0) {
+              return res.status(403).json({ error: 'This account is private' });
+            }
+            fetchPostComments();
+          }
+        );
+      } else {
+        fetchPostComments();
+      }
+      function fetchPostComments() {
+        db.query(
+          `SELECT comments.id, comments.content, comments.created_at, users.username
+           FROM comments
+           JOIN users ON comments.user_id = users.id
+           WHERE comments.post_id = ?
+           ORDER BY comments.created_at ASC`,
+          [postId],
+          (err, commentResults) => {
+            if (err) {
+              console.error('GET /api/posts/:postId comments error:', err);
+              return res.status(500).json({ error: 'Database error' });
+            }
+            console.log('GET /api/posts/:postId results:', { post: postResults[0], comments: commentResults });
+            res.json({ post: postResults[0], comments: commentResults });
+          }
+        );
+      }
     }
   );
+});
+
+// GET / - All posts
+router.get('/', async (req, res) => {
+  console.log('GET /api/posts:', { user: req.user });
+  const currentUserId = req.user ? req.user.id : null;
+  try {
+    const results = await new Promise((resolve, reject) => {
+      db.query(
+        `SELECT posts.id, posts.content, posts.image_url, posts.created_at, users.username,
+                (SELECT COUNT(*) FROM likes WHERE post_id = posts.id) AS like_count,
+                users.private, users.id AS user_id
+         FROM posts
+         JOIN users ON posts.user_id = users.id
+         ORDER BY posts.created_at DESC`,
+        (err, results) => {
+          if (err) reject(err);
+          else resolve(results);
+        }
+      );
+    });
+
+    const filteredPosts = await Promise.all(
+      results.map(async (post) => {
+        if (!post.private || (currentUserId && post.user_id === currentUserId)) {
+          return post;
+        }
+        if (post.private && currentUserId) {
+          const followerResults = await new Promise((resolve, reject) => {
+            db.query(
+              'SELECT * FROM followers WHERE follower_id = ? AND followed_id = ?',
+              [currentUserId, post.user_id],
+              (err, results) => {
+                if (err) reject(err);
+                else resolve(results);
+              }
+            );
+          });
+          return followerResults.length > 0 ? post : null;
+        }
+        return null;
+      })
+    );
+
+    const finalPosts = filteredPosts.filter((post) => post !== null);
+    console.log('GET /api/posts results:', finalPosts);
+    res.json(finalPosts);
+  } catch (err) {
+    console.error('GET /api/posts error:', err);
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 module.exports = router;

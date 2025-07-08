@@ -1,37 +1,49 @@
-
 import { useState, useContext } from 'react';
 import axios from 'axios';
 import { AuthContext } from '../../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 function PostForm() {
   const { user } = useContext(AuthContext);
+  const navigate = useNavigate();
   const [content, setContent] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
+  const [image, setImage] = useState(null);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user) {
+    if (!user || !localStorage.getItem('token')) {
       setError('You must be logged in to post');
+      navigate('/login');
       return;
     }
+    if (!content && !image) {
+      setError('Post content or image is required');
+      return;
+    }
+    const formData = new FormData();
+    if (content) formData.append('content', content);
+    if (image) formData.append('image', image);
     try {
-      await axios.post(
-        'http://localhost:5000/api/posts',
-        { content, image_url: imageUrl },
-        { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-      );
+      const response = await axios.post('http://localhost:5000/api/posts', formData, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      console.log('PostForm: Post created:', response.data, 'Status:', response.status);
       setContent('');
-      setImageUrl('');
-      window.location.reload(); // Temporary refresh
+      setImage(null);
+      setError('');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create post');
+      const errorMsg = err.response?.data?.error || 'Failed to create post';
+      console.error('PostForm: Post error:', err.response?.data, err.response?.status, err.message);
+      setError(errorMsg);
     }
   };
 
   return (
     <div className="max-w-2xl mx-auto mt-6 p-4 bg-white rounded-lg shadow-md">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} encType="multipart/form-data" className="space-y-4">
         <textarea
           value={content}
           onChange={(e) => setContent(e.target.value)}
@@ -39,10 +51,9 @@ function PostForm() {
           className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         <input
-          type="text"
-          value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="Image URL (optional)"
+          type="file"
+          accept="image/jpeg,image/png"
+          onChange={(e) => setImage(e.target.files[0])}
           className="w-full p-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
         {error && <p className="text-red-500">{error}</p>}

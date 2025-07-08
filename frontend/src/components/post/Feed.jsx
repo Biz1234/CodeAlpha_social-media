@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -17,28 +16,58 @@ function Feed({ username, isMedia, isLikedPosts }) {
   const [socket, setSocket] = useState(null);
 
   useEffect(() => {
-    const newSocket = io('http://localhost:5000');
+    const newSocket = io('http://localhost:5000', {
+      reconnection: true,
+      reconnectionAttempts: 5,
+      transports: ['websocket', 'polling'],
+    });
     setSocket(newSocket);
-    return () => newSocket.close();
-  }, []);
+
+    newSocket.on('connect', () => {
+      console.log('Feed: Connected to Socket.IO server');
+      if (user) {
+        newSocket.emit('join', user.id);
+        console.log('Feed: Joined room: user_', user.id);
+      }
+    });
+
+    newSocket.on('new_post', (post) => {
+      console.log('Feed: New post received:', post);
+      if (!username || post.username === username || post.user_id === user?.id) {
+        setPosts((prev) => [post, ...prev]);
+      }
+    });
+
+    newSocket.on('update_post', (updatedPost) => {
+      console.log('Feed: Post updated:', updatedPost);
+      setPosts((prev) =>
+        prev.map((post) => (post.id === updatedPost.id ? updatedPost : post))
+      );
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.error('Feed: Socket.IO connection error:', err.message);
+      setError('Failed to connect to real-time updates');
+    });
+
+    return () => {
+      newSocket.off('new_post');
+      newSocket.off('update_post');
+      newSocket.off('connect');
+      newSocket.off('connect_error');
+      newSocket.close();
+    };
+  }, [user, username]);
 
   useEffect(() => {
-    if (socket && user) {
-      socket.emit('join', user.id);
-      socket.on('new_post', (post) => {
-        if (!username || post.username === username) {
-          setPosts((prev) => [post, ...prev]);
-        }
-      });
-      socket.on('update_post', (updatedPost) => {
-        setPosts((prev) =>
-          prev.map((post) => (post.id === updatedPost.id ? updatedPost : post))
-        );
-      });
+    if (!user && !username) {
+      console.log('Feed: Skipping fetch, no user or username');
+      setPosts([]);
+      setLoading(false);
+      return;
     }
-  }, [socket, user, username]);
 
-  useEffect(() => {
+    console.log('Feed: Fetching posts for user:', user?.username, 'Viewing username:', username);
     let url = 'http://localhost:5000/api/posts';
     if (username) {
       url = isMedia
@@ -52,18 +81,21 @@ function Feed({ username, isMedia, isLikedPosts }) {
         headers: user ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {},
       })
       .then((response) => {
-        setPosts(response.data);
+        console.log('Feed: Fetched posts:', response.data, 'Status:', response.status);
+        setPosts(Array.isArray(response.data) ? response.data : []);
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.response?.data?.error || 'Failed to load posts');
+        console.error('Feed: Fetch posts error:', err.response?.data, err.response?.status, err.message);
+        setError(err.response?.data?.error || 'Failed to load posts: ' + err.message);
         setLoading(false);
       });
   }, [username, isMedia, isLikedPosts, user]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!user) {
+    if (!user || !localStorage.getItem('token')) {
+      setError('You must be logged in to post');
       navigate('/login');
       return;
     }
@@ -75,21 +107,29 @@ function Feed({ username, isMedia, isLikedPosts }) {
     if (newPost) formData.append('content', newPost);
     if (image) formData.append('image', image);
     try {
-      await axios.post('http://localhost:5000/api/posts', formData, {
+      const response = await axios.post('http://localhost:5000/api/posts', formData, {
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token')}`,
-          'Content-Type': 'multipart/form-data',
         },
       });
+      console.log('Feed: Post created:', response.data, 'Status:', response.status);
       setNewPost('');
       setImage(null);
       setError('');
+      // Re-fetch posts as a fallback
+      const postsResponse = await axios.get('http://localhost:5000/api/posts', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      console.log('Feed: Re-fetched posts after post:', postsResponse.data);
+      setPosts(Array.isArray(postsResponse.data) ? postsResponse.data : []);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to create post');
+      const errorMsg = err.response?.data?.error || 'Failed to create post: ' + err.message;
+      console.error('Feed: Post error:', err.response?.data, err.response?.status, err.message);
+      setError(errorMsg);
     }
   };
 
-  if (loading) return <div className="text-center mt-10 text-gray-600">Loading...</div>;
+  if (loading) return <div className="text-center mt-10 text-gray-600">Loading posts...</div>;
   if (error) return <div className="text-center text-red-500 mt-10">{error}</div>;
 
   return (

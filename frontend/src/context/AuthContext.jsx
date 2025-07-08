@@ -8,23 +8,29 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      axios
-        .get('http://localhost:5000/api/users/me', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        .then((response) => {
+    const validateToken = async () => {
+      const token = localStorage.getItem('token');
+      console.log('AuthContext: Token found:', !!token);
+      if (token) {
+        try {
+          const response = await axios.get('http://localhost:5000/api/users/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          console.log('AuthContext: User fetched:', response.data);
           setUser(response.data);
           setLoading(false);
-        })
-        .catch(() => {
+        } catch (err) {
+          console.error('AuthContext: Token validation error:', err.response?.data?.error, err.response?.status);
           localStorage.removeItem('token');
+          setUser(null);
           setLoading(false);
-        });
-    } else {
-      setLoading(false);
-    }
+        }
+      } else {
+        setUser(null);
+        setLoading(false);
+      }
+    };
+    validateToken();
   }, []);
 
   const login = async (email, password) => {
@@ -33,10 +39,13 @@ export const AuthProvider = ({ children }) => {
         email,
         password,
       });
+      console.log('AuthContext: Login successful:', response.data.user);
       localStorage.setItem('token', response.data.token);
       setUser(response.data.user);
+      return response.data.user;
     } catch (error) {
-      throw error.response.data.error;
+      console.error('AuthContext: Login error:', error.response?.data?.error);
+      throw error.response?.data?.error || 'Login failed';
     }
   };
 
@@ -47,15 +56,22 @@ export const AuthProvider = ({ children }) => {
         email,
         password,
       });
+      console.log('AuthContext: Registration successful');
     } catch (error) {
-      throw error.response.data.error;
+      console.error('AuthContext: Registration error:', error.response?.data?.error);
+      throw error.response?.data?.error || 'Registration failed';
     }
   };
 
   const logout = () => {
+    console.log('AuthContext: Logging out');
     localStorage.removeItem('token');
     setUser(null);
   };
+
+  if (loading) {
+    return <div className="text-center mt-10 text-gray-600">Authenticating...</div>;
+  }
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout }}>
@@ -64,4 +80,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export default AuthProvider;  
+export default AuthProvider;

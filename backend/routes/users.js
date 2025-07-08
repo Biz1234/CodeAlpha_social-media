@@ -3,7 +3,7 @@ const db = require('../config/db');
 const authMiddleware = require('../middleware/auth');
 const router = express.Router();
 
-// ------------------------- PROTECTED ROUTES -------------------------
+
 
 // Get current user's profile
 router.get('/me', authMiddleware, (req, res) => {
@@ -84,7 +84,7 @@ router.get('/follow-status/:userId', authMiddleware, (req, res) => {
   });
 });
 
-// ------------------------- PUBLIC ROUTES -------------------------
+
 
 // Search users by username
 router.get('/search', (req, res) => {

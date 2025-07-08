@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useContext } from 'react';
 import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -14,14 +13,17 @@ function Profile() {
   const [privateStatus, setPrivateStatus] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [imageError, setImageError] = useState('');
   const [activeTab, setActiveTab] = useState('posts');
 
   useEffect(() => {
+    console.log('Profile: Fetching profile for username:', username);
     axios
       .get(`http://localhost:5000/api/users/${username}`, {
         headers: user ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {},
       })
       .then((response) => {
+        console.log('Profile: Profile fetched:', response.data);
         setProfile(response.data);
         setPrivateStatus(response.data.private);
         if (user && user.username !== username) {
@@ -29,13 +31,21 @@ function Profile() {
             .get(`http://localhost:5000/api/users/follow-status/${response.data.id}`, {
               headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
             })
-            .then((res) => setIsFollowing(res.data.isFollowing))
-            .catch(() => setIsFollowing(false));
+            .then((res) => {
+              console.log('Profile: Follow status:', res.data);
+              setIsFollowing(res.data.isFollowing);
+            })
+            .catch((err) => {
+              console.error('Profile: Follow status error:', err.response?.data, err.response?.status, err.message);
+              setIsFollowing(false);
+            });
         }
         setLoading(false);
       })
       .catch((err) => {
-        setError(err.response?.data?.error || 'Failed to load profile');
+        const errorMsg = err.response?.data?.error || 'Failed to load profile';
+        console.error('Profile: Fetch error:', err.response?.data, err.response?.status, err.message);
+        setError(errorMsg);
         setLoading(false);
       });
   }, [username, user]);
@@ -46,23 +56,29 @@ function Profile() {
       return;
     }
     try {
+      console.log('Profile: Toggling follow for user:', profile.id, 'isFollowing:', isFollowing);
       await axios.post(
         `http://localhost:5000/api/users/follow/${profile.id}`,
         {},
         { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
       );
       setIsFollowing(!isFollowing);
-      axios.get(`http://localhost:5000/api/users/${username}`, {
+      const response = await axios.get(`http://localhost:5000/api/users/${username}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-      }).then((response) => setProfile(response.data));
+      });
+      console.log('Profile: Profile updated after follow:', response.data);
+      setProfile(response.data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update follow status');
+      const errorMsg = err.response?.data?.error || 'Failed to update follow status';
+      console.error('Profile: Follow error:', err.response?.data, err.response?.status, err.message);
+      setError(errorMsg);
     }
   };
 
   const handleTogglePrivate = async () => {
     if (!user || user.username !== username) return;
     try {
+      console.log('Profile: Toggling private status:', !privateStatus);
       await axios.put(
         'http://localhost:5000/api/users/me',
         { private: !privateStatus },
@@ -70,10 +86,24 @@ function Profile() {
       );
       setPrivateStatus(!privateStatus);
       setProfile({ ...profile, private: !privateStatus });
+      console.log('Profile: Private status updated');
       setError('');
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to update privacy setting');
+      const errorMsg = err.response?.data?.error || 'Failed to update privacy setting';
+      console.error('Profile: Private toggle error:', err.response?.data, err.response?.status, err.message);
+      setError(errorMsg);
     }
+  };
+
+  const handleImageError = (type) => {
+    console.error(`Profile: Failed to load ${type} image:`, profile[type]);
+    setImageError(`Failed to load ${type} image`);
+  };
+
+  const getImageUrl = (path) => {
+    if (!path) return 'https://picsum.photos/150';
+    const encodedPath = encodeURI(`http://localhost:5000${path}`);
+    return `${encodedPath}?t=${Date.now()}`;
   };
 
   if (loading) return <div className="text-center mt-10 text-gray-600">Loading...</div>;
@@ -84,18 +114,20 @@ function Profile() {
       {/* Cover Photo */}
       <div className="h-48 bg-gray-200">
         <img
-          src={profile.cover_photo || 'https://picsum.photos/1200/200'}
+          src={getImageUrl(profile.cover_photo)}
           alt="Cover"
           className="w-full h-full object-cover rounded-t-lg"
+          onError={() => handleImageError('cover_photo')}
         />
       </div>
       {/* Profile Info */}
       <div className="relative bg-white rounded-b-lg shadow-md -mt-16 mx-4 p-6">
         <div className="flex items-center space-x-4">
           <img
-            src={profile.profile_picture || 'https://picsum.photos/150'}
+            src={getImageUrl(profile.profile_picture)}
             alt="Profile"
             className="w-24 h-24 rounded-full object-cover border-4 border-white"
+            onError={() => handleImageError('profile_picture')}
           />
           <div>
             <div className="flex items-center space-x-2">
@@ -110,6 +142,8 @@ function Profile() {
             <p className="text-gray-500">{profile.bio || 'No bio available'}</p>
           </div>
         </div>
+        {/* Image Error */}
+        {imageError && <p className="text-red-500 mt-2">{imageError}</p>}
         {/* Privacy Toggle and Buttons */}
         <div className="mt-4 flex items-center space-x-4">
           {user && user.username === profile.username && (

@@ -5,79 +5,74 @@ export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const validateToken = async () => {
-      const token = localStorage.getItem('token');
-      console.log('AuthContext: Token found:', !!token);
-      if (token) {
-        try {
-          const response = await axios.get('http://localhost:5000/api/users/me', {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+    const token = localStorage.getItem('token');
+    if (token) {
+      axios
+        .get('http://localhost:5000/api/users/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        .then((response) => {
           console.log('AuthContext: User fetched:', response.data);
           setUser(response.data);
-          setLoading(false);
-        } catch (err) {
-          console.error('AuthContext: Token validation error:', err.response?.data?.error, err.response?.status);
+        })
+        .catch((err) => {
+          console.error('AuthContext: Fetch user error:', err.response?.data, err.response?.status, err.message);
           localStorage.removeItem('token');
           setUser(null);
-          setLoading(false);
-        }
-      } else {
-        setUser(null);
-        setLoading(false);
-      }
-    };
-    validateToken();
+        });
+    }
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (username, password) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        email,
-        password,
-      });
-      console.log('AuthContext: Login successful:', response.data.user);
+      const response = await axios.post('http://localhost:5000/api/auth/login', { username, password });
       localStorage.setItem('token', response.data.token);
       setUser(response.data.user);
-      return response.data.user;
-    } catch (error) {
-      console.error('AuthContext: Login error:', error.response?.data?.error);
-      throw error.response?.data?.error || 'Login failed';
+      console.log('AuthContext: Login successful:', response.data.user);
+    } catch (err) {
+      console.error('AuthContext: Login error:', err.response?.data, err.response?.status, err.message);
+      throw err;
     }
   };
 
   const register = async (username, email, password) => {
     try {
-      await axios.post('http://localhost:5000/api/auth/register', {
-        username,
-        email,
-        password,
-      });
-      console.log('AuthContext: Registration successful');
-    } catch (error) {
-      console.error('AuthContext: Registration error:', error.response?.data?.error);
-      throw error.response?.data?.error || 'Registration failed';
+      const response = await axios.post('http://localhost:5000/api/auth/register', { username, email, password });
+      localStorage.setItem('token', response.data.token);
+      setUser(response.data.user);
+      console.log('AuthContext: Register successful:', response.data.user);
+    } catch (err) {
+      console.error('AuthContext: Register error:', err.response?.data, err.response?.status, err.message);
+      throw err;
     }
   };
 
   const logout = () => {
-    console.log('AuthContext: Logging out');
     localStorage.removeItem('token');
     setUser(null);
+    console.log('AuthContext: Logged out');
   };
 
-  if (loading) {
-    return <div className="text-center mt-10 text-gray-600">Authenticating...</div>;
-  }
+  const refreshProfile = async () => {
+    const token = localStorage.getItem('token');
+    if (token && user) {
+      try {
+        const response = await axios.get('http://localhost:5000/api/users/me', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        console.log('AuthContext: Profile refreshed:', response.data);
+        setUser(response.data);
+      } catch (err) {
+        console.error('AuthContext: Refresh profile error:', err.response?.data, err.response?.status, err.message);
+      }
+    }
+  };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, login, register, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
 };
-
-export default AuthProvider;

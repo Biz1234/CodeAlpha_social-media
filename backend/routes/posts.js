@@ -73,9 +73,13 @@ router.post('/', authMiddleware, upload.single('image'), (req, res) => {
             console.error('POST /api/posts fetch error:', err);
             return res.status(500).json({ error: 'Database error' });
           }
-          console.log('POST /api/posts: Emitting new_post:', postResults[0]);
-          const io = req.app.get('io');
-          io.emit('new_post', postResults[0]);
+          const io = req.io; // Use req.io from middleware
+          if (io) {
+            console.log('POST /api/posts: Emitting new_post:', postResults[0]);
+            io.emit('new_post', postResults[0]);
+          } else {
+            console.error('POST /api/posts: Socket.IO instance not available');
+          }
           res.status(201).json({ message: 'Post created successfully', postId });
         }
       );
